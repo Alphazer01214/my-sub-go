@@ -1,0 +1,37 @@
+{
+  "ffmpeg": {
+    "binary_path": "dependencies/ffmpeg/bin/ffmpeg.exe",
+    "sample_rate": 16000,
+    "audio_codec": "pcm_s16le"
+  },
+  "whisper": {
+    "binary_path": "dependencies/whisper.cpp/bin/whisper-cli.exe",
+    "model_path": "models/whisper/ggml-medium.bin",
+    "vad_path": "models/vad/ggml-silero-v6.2.0.bin",
+    "src_lang": "ja",
+    "chunk_duration_sec": 20,
+    "chunk_overlap_sec": 5,
+    "threads": 8
+  },
+  "llama": {
+    "binary_path": "dependencies/llama.cpp/bin/llama.exe",
+    "model_path": "models/translator/translategemma-4b-it.Q4_K_M.gguf",
+    "prompt_template": "You are an expert translator.",
+    "src_lang": "en",
+    "tgt_lang": "zh"
+  },
+  "llm_api": {
+    "provider": "deepseek",
+    "base_url": "https://api.deepseek.com",
+    "model_name": "deepseek-chat",
+    "api_key": "",
+    "src_lang": "ja",
+    "tgt_lang": "zh",
+    "prompt_template": "你正在翻译一个日本的情景喜剧，内容是两位美食家去一家会员制餐厅体验从未体验过的独特料理",
+    "ref_window": 2,
+    "process_window": 8
+  },
+  "cuda": true,
+  "default_output_dir": "output",
+  "I18n": null
+}

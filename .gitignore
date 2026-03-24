@@ -1,0 +1,6 @@
+﻿.env
+.idea/
+models/
+test/
+*.dll
+*.exe
