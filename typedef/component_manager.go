@@ -53,6 +53,10 @@ func (cm *ComponentManager) RunVideoTranscriber(vPath string, saveSRTDir string,
 	tmpFilePath := filepath.Join(dir, tmpFileName)
 	//jsonSubPath := filepath.Join(dir, bs+".json")
 	//srtSubPath := filepath.Join(dir, bs+".srt")
+	err := cm.Cvt.GetVideoWavFile(vPath, dir, cm.Cvt.CvtArgs)
+	if err != nil {
+		return nil, err
+	}
 
 	if err := cm.Cvt.GetWavTmpFile(vPath, tmpFilePath); err != nil {
 		return nil, err

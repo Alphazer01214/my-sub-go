@@ -70,7 +70,7 @@ func (ui *TranscriberUI) renderConfig() fyne.CanvasObject {
 	return tabs
 
 }
-func (ui *TranscriberUI) RenderConverterWindow() fyne.CanvasObject {
+func (ui *TranscriberUI) RenderTranscriberWindow() fyne.CanvasObject {
 	tabs := ui.renderConfig()
 	progress := widget.NewProgressBarInfinite()
 	progress.Hide()

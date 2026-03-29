@@ -7,8 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cloudwego/eino-ext/components/model/ollama"
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/schema"
+	"github.com/eino-contrib/ollama/api"
 )
 
 const defaultPrompt = ` 
@@ -43,7 +45,7 @@ You MUST respond with a pure JSON array only, containing no additional text, exp
 type TranslatorAPI struct {
 	cfg       *Config
 	ctx       context.Context
-	chatModel *openai.ChatModel
+	chatModel interface{}
 }
 
 type TranslateResult struct {
@@ -61,11 +63,21 @@ func (t *TranslatorAPI) Init(cfg *Config) error {
 	var err error
 	t.cfg = cfg
 	t.ctx = context.Background()
-	t.chatModel, err = openai.NewChatModel(t.ctx, &openai.ChatModelConfig{
-		BaseURL: t.cfg.LLMAPI.BaseURL,
-		APIKey:  t.cfg.LLMAPI.APIKey,
-		Model:   t.cfg.LLMAPI.ModelName,
-	})
+	switch t.cfg.LLMAPI.Provider {
+	case "openai", "deepseek":
+		t.chatModel, err = openai.NewChatModel(t.ctx, &openai.ChatModelConfig{
+			BaseURL: t.cfg.LLMAPI.BaseURL,
+			APIKey:  t.cfg.LLMAPI.APIKey,
+			Model:   t.cfg.LLMAPI.ModelName,
+		})
+	case "ollama":
+		t.chatModel, err = ollama.NewChatModel(t.ctx, &ollama.ChatModelConfig{
+			BaseURL:  t.cfg.LLMAPI.BaseURL,
+			Model:    t.cfg.LLMAPI.ModelName,
+			Thinking: &api.ThinkValue{Value: false},
+		})
+
+	}
 	if err != nil {
 		return fmt.Errorf("[LLM] can't init model: %v", err)
 	}
@@ -111,7 +123,10 @@ func (t *TranslatorAPI) Translate(sub *Subtitle) (Subtitle, error) {
 		prompt := t.buildPrompt(toTranslate, textCtx, srcLang, tgtLang, userPrompt)
 		trans, err := t.call(t.ctx, t.chatModel, prompt, 3)
 		if err != nil {
-			return subRes, err
+			for _, segment := range toTranslate {
+				transRes = append(transRes, TranslateResult{Index: segment.Index, Translation: ""})
+			}
+			continue
 		}
 		if len(trans) == 0 {
 			fmt.Printf("[llm] empty response\n")
@@ -152,38 +167,78 @@ func (t *TranslatorAPI) buildPrompt(toTranslate []Segment, ctx []Segment, src st
 	return prompt
 }
 
-func (t *TranslatorAPI) call(ctx context.Context, model *openai.ChatModel, prompt string, retry int) ([]TranslateResult, error) {
-	message := []*schema.Message{
-		schema.SystemMessage("You are an expert API, only response valid pure JSON format."),
-		schema.UserMessage(prompt),
-	}
-	fmt.Printf("[llm] calling llm: %s\n", prompt)
+func (t *TranslatorAPI) call(ctx context.Context, model interface{}, prompt string, retry int) ([]TranslateResult, error) {
+	switch model := model.(type) {
+	case *openai.ChatModel:
+		message := []*schema.Message{
+			schema.SystemMessage("You are an expert API, only response valid pure JSON format."),
+			schema.UserMessage(prompt),
+		}
+		fmt.Printf("[llm] calling llm: %s\n", prompt)
 
-	var lastErr error
-	for i := 0; i < retry; i++ {
-		response, err := model.Generate(ctx, message)
-		if err != nil {
-			lastErr = err
-			time.Sleep(2 * time.Second)
-			continue
-		}
+		var lastErr error
+		for i := 0; i < retry; i++ {
+			response, err := model.Generate(ctx, message)
+			if err != nil {
+				lastErr = err
+				time.Sleep(2 * time.Second)
+				continue
+			}
 
-		var res []TranslateResult
-		content := strings.TrimSpace(response.Content)
-		fmt.Printf("[llm] llm response: %s", content)
-		if strings.HasPrefix(content, "```json") {
-			content = strings.TrimPrefix(content, "```json")
-			content = strings.TrimSuffix(content, "```")
-			content = strings.TrimSpace(content)
+			var res []TranslateResult
+			content := strings.TrimSpace(response.Content)
+			fmt.Printf("[llm] llm response: %s", content)
+			if strings.HasPrefix(content, "```json") {
+				content = strings.TrimPrefix(content, "```json")
+				content = strings.TrimSuffix(content, "```")
+				content = strings.TrimSpace(content)
+			}
+			if err := json.Unmarshal([]byte(content), &res); err != nil {
+				lastErr = err
+				time.Sleep(2 * time.Second)
+				continue
+			}
+			return res, nil
 		}
-		if err := json.Unmarshal([]byte(content), &res); err != nil {
-			lastErr = err
-			time.Sleep(2 * time.Second)
-			continue
+		return nil, fmt.Errorf("[LLM] call failed after %d retries: %w", retry, lastErr)
+
+	case *ollama.ChatModel:
+		message := []*schema.Message{
+			schema.SystemMessage("You are an expert API, only response valid pure JSON format."),
+			schema.UserMessage(prompt),
 		}
-		return res, nil
+		fmt.Printf("[llm] calling llm: %s\n", prompt)
+
+		var lastErr error
+		for i := 0; i < retry; i++ {
+			response, err := model.Generate(ctx, message)
+			if err != nil {
+				lastErr = err
+				time.Sleep(2 * time.Second)
+				continue
+			}
+
+			var res []TranslateResult
+			content := strings.TrimSpace(response.Content)
+			fmt.Printf("[llm] llm response: %s", content)
+			if strings.HasPrefix(content, "```json") {
+				content = strings.TrimPrefix(content, "```json")
+				content = strings.TrimSuffix(content, "```")
+				content = strings.TrimSpace(content)
+			}
+			if err := json.Unmarshal([]byte(content), &res); err != nil {
+				lastErr = err
+				time.Sleep(2 * time.Second)
+				continue
+			}
+			return res, nil
+		}
+		return nil, fmt.Errorf("[LLM] call failed after %d retries: %w", retry, lastErr)
+
+	default:
+
 	}
-	return nil, fmt.Errorf("[LLM] call failed after %d retries: %w", retry, lastErr)
+	return nil, fmt.Errorf("[LLM] unknown model type: %T", model)
 }
 
 func (t *TranslatorAPI) merge(segs []Segment, trans []TranslateResult) error {

@@ -21,13 +21,13 @@
     "tgt_lang": "zh"
   },
   "llm_api": {
-    "provider": "deepseek",
-    "base_url": "https://api.deepseek.com",
-    "model_name": "deepseek-chat",
+    "provider": "ollama",
+    "base_url": "http://localhost:11434",
+    "model_name": "qwen3.5:4b",
     "api_key": "",
     "src_lang": "ja",
     "tgt_lang": "zh",
-    "prompt_template": "你正在翻译一个日本的情景喜剧，内容是两位美食家去一家会员制餐厅体验从未体验过的独特料理",
+    "prompt_template": "",
     "ref_window": 2,
     "process_window": 8
   },

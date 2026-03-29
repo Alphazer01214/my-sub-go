@@ -2,8 +2,12 @@ package gui
 
 import (
 	"my-sub-go/typedef"
+	"os"
+	"os/exec"
 	"reflect"
+	"runtime"
 	"strconv"
+	"syscall"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -77,7 +81,10 @@ func getRealTimeObj(w *fyne.Window, fieldType string, value *reflect.Value) fyne
 				if err == nil && d != nil {
 					//current, _ := b.Get()
 					value.SetString(d.Path())
-					b.Set(d.Path())
+					err := b.Set(d.Path())
+					if err != nil {
+						return
+					}
 				}
 			}, *w)
 			//if currentDir := value.String(); currentDir != "" {
@@ -105,7 +112,10 @@ func getRealTimeObj(w *fyne.Window, fieldType string, value *reflect.Value) fyne
 			d := dialog.NewFileOpen(func(f fyne.URIReadCloser, err error) {
 				if err == nil && f != nil {
 					value.SetString(f.URI().Path())
-					b.Set(f.URI().Path())
+					err := b.Set(f.URI().Path())
+					if err != nil {
+						return
+					}
 				}
 			}, *w)
 			//if currentPath := value.String(); currentPath != "" {
@@ -224,4 +234,33 @@ func bindObj(fieldType string, value *reflect.Value, bind binding.DataItem, obj 
 	}
 
 	return bind, obj
+}
+
+// restartApp 重启当前程序
+func restartApp() {
+	// 获取当前可执行文件路径
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+
+	// 根据操作系统不同处理
+	switch runtime.GOOS {
+	case "windows":
+		// Windows 上使用 cmd /c start 来启动新进程
+		cmd := exec.Command("cmd", "/c", "start", exe)
+		err := cmd.Start()
+		if err != nil {
+			return
+		}
+	case "darwin", "linux":
+		// Unix-like 系统使用 syscall.Exec
+		err = syscall.Exec(exe, os.Args, os.Environ())
+		if err != nil {
+			return
+		}
+	}
+
+	// 退出当前程序
+	os.Exit(0)
 }

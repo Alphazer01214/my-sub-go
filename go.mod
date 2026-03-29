@@ -6,6 +6,7 @@ go 1.25
 require (
 	fyne.io/fyne/v2 v2.7.2
 	github.com/cloudwego/eino v0.7.34
+	github.com/cloudwego/eino-ext/components/model/ollama v0.1.8
 	github.com/cloudwego/eino-ext/components/model/openai v0.1.8
 	github.com/ggerganov/whisper.cpp/bindings/go v0.0.0-20260209103306-764482c3175d
 	github.com/go-audio/audio v1.0.0
@@ -25,6 +26,7 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/eino-contrib/jsonschema v1.0.3 // indirect
+	github.com/eino-contrib/ollama v0.1.0 // indirect
 	github.com/evanphx/json-patch v0.5.2 // indirect
 	github.com/fredbi/uri v1.1.1 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
@@ -49,7 +51,6 @@ require (
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
-	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/meguminnnnnnnnn/go-openai v0.1.1 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
@@ -71,6 +72,7 @@ require (
 	github.com/yargevad/filepathx v1.0.0 // indirect
 	github.com/yuin/goldmark v1.7.16 // indirect
 	golang.org/x/arch v0.11.0 // indirect
+	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/exp v0.0.0-20250218142911-aa4b98e5adaa // indirect
 	golang.org/x/image v0.36.0 // indirect
 	golang.org/x/net v0.50.0 // indirect

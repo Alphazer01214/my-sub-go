@@ -206,12 +206,21 @@ func (ui *ConfigUI) renderTab() fyne.CanvasObject {
 func (ui *ConfigUI) RenderConfigWindow() fyne.CanvasObject {
 	tabs := ui.renderTab()
 	ui.SaveBtn = widget.NewButton("Save", func() {
-		// 保存前先将 UI 值同步到 Config
-		if err := ui.Cm.Save(); err != nil {
-			dialog.ShowError(err, *ui.W)
-			return
-		}
-		dialog.ShowInformation("Success", "Save config success", *ui.W)
+		// 显示确认对话框
+		d := dialog.NewConfirm("保存配置", "是否保存配置并重启程序？",
+			func(yes bool) {
+				if yes {
+					// 保存配置
+					if err := ui.Cm.Save(); err != nil {
+						dialog.ShowError(err, *ui.W)
+						return
+					}
+					// 重启程序
+					restartApp()
+				}
+			}, *ui.W)
+		d.SetConfirmImportance(widget.DangerImportance)
+		d.Show()
 	})
 	ui.ResetBtn = widget.NewButton("Reset", func() {
 		if err := ui.Cm.Reset(); err != nil {

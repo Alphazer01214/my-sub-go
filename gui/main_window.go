@@ -89,7 +89,7 @@ func (ins *Instance) mountComponents(cm *typedef.ComponentManager) {
 func (ins *Instance) mountUIs() {
 	ins.uis["config"] = ins.ConfigUI.RenderConfigWindow()
 	ins.uis["converter"] = ins.ConverterUI.RenderConverterWindow()
-	ins.uis["transcriber"] = ins.TranscriberUI.RenderConverterWindow()
+	ins.uis["transcriber"] = ins.TranscriberUI.RenderTranscriberWindow()
 	ins.uis["translator"] = ins.TranslatorUI.RenderTranslatorWindow()
 }
 
