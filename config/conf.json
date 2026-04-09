@@ -23,7 +23,7 @@
   "llm_api": {
     "provider": "ollama",
     "base_url": "http://localhost:11434",
-    "model_name": "qwen3.5:4b",
+    "model_name": "gemma4:26b",
     "api_key": "",
     "src_lang": "ja",
     "tgt_lang": "zh",

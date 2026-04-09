@@ -1,6 +1,6 @@
-# MyGoSubtitle - 自动翻译工具
+# MyGoAutoSub - 视频字幕工具
 
-MyGoSubtitle 是一款基于 AI 的字幕自动生成和翻译工具，使用 Whisper 语音识别模型和大语言模型（LLM）实现视频/音频的自动转录和翻译。支持多种语言和媒体格式，可生成高质量的双语字幕。
+MyGoAutoSub 是一款基于 AI 的字幕自动生成和翻译工具，使用 Whisper 语音识别模型和大语言模型（LLM）实现视频/音频的自动转录和翻译。支持多种语言和媒体格式，可生成高质量的双语字幕。
 
 ## 功能特性
 - 🎯 **语音识别**: 基于 Whisper.cpp 的高精度语音转文字
@@ -158,7 +158,7 @@ Whisper 模型可以从以下地址下载：
 
 将下载的模型文件放入 `models/whisper/` 目录
 
-#### VAD 模型（可选）
+#### VAD 模型
 语音活动检测模型用于提高字幕分割准确性：
 - **下载地址**: [Silero VAD](https://huggingface.co/ggerganov/whisper.cpp/blob/main/ggml-silero-v6.2.0.bin)
 - 将模型文件放入 `models/vad/` 目录
