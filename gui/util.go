@@ -266,3 +266,22 @@ func restartApp() {
 	// 退出当前程序
 	os.Exit(0)
 }
+
+// runInBackground 在后台 goroutine 执行耗时操作，完成后回到 UI 线程恢复控件状态并弹窗。
+func runInBackground(w fyne.Window, btn *widget.Button, progress *widget.ProgressBarInfinite, name, successMsg string, fn func() error) {
+	btn.Disable()
+	progress.Show()
+	go func() {
+		err := fn()
+		fyne.Do(func() {
+			if err != nil {
+				fyne.LogError(name, err)
+				dialog.ShowInformation("Error", err.Error(), w)
+			} else {
+				dialog.ShowInformation("Success", successMsg, w)
+			}
+			btn.Enable()
+			progress.Hide()
+		})
+	}()
+}

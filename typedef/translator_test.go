@@ -114,7 +114,7 @@ func TestBuildPrompt(t *testing.T) {
 	tl := &TranslatorAPI{}
 	ctx := []Segment{{Index: 1, Text: "one", Translation: "一"}}
 	toTranslate := []Segment{{Index: 2, Text: "two"}}
-	p := tl.buildPrompt(toTranslate, ctx, "en", "zh", "keep the tone")
+	p := tl.buildPrompt(toTranslate, ctx, LangEn, LangZh, "keep the tone")
 	if strings.Contains(p, "{{.") {
 		t.Fatalf("buildPrompt: unreplaced placeholders in:\n%s", p)
 	}
@@ -140,5 +140,40 @@ func TestCallParsesFencedJSON(t *testing.T) {
 func TestNewChatModelUnknownProvider(t *testing.T) {
 	if _, err := newChatModel(context.Background(), &LLMAPIConfig{Provider: "bogus"}); err == nil {
 		t.Fatal("newChatModel: expected error for unknown provider")
+	}
+}
+
+func TestConfigValidate(t *testing.T) {
+	base := func() *Config {
+		return &Config{
+			Whisper: WhisperConfig{SrcLang: LangAuto},
+			Llama:   LlamaConfig{SrcLang: LangEn, TgtLang: LangZh},
+			LLMAPI:  LLMAPIConfig{SrcLang: LangJa, TgtLang: LangZh},
+		}
+	}
+
+	tests := []struct {
+		name    string
+		mutate  func(c *Config)
+		wantErr bool
+	}{
+		{"valid config", func(c *Config) {}, false},
+		{"empty langs allowed", func(c *Config) {
+			c.LLMAPI.SrcLang = ""
+			c.LLMAPI.TgtLang = ""
+		}, false},
+		{"auto source allowed", func(c *Config) { c.Whisper.SrcLang = LangAuto }, false},
+		{"auto target rejected", func(c *Config) { c.LLMAPI.TgtLang = LangAuto }, true},
+		{"unknown lang rejected", func(c *Config) { c.Llama.TgtLang = "xx" }, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := base()
+			tt.mutate(c)
+			err := c.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
 	}
 }

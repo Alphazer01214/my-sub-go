@@ -6,7 +6,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -101,21 +100,11 @@ func (ui *ConverterUI) RenderConverterWindow() fyne.CanvasObject {
 		if ui.cm.Cvt.IsProcessing() {
 			return
 		}
-		ui.Btn.Disable()
-		progress.Show()
-		go func() {
-			err := ui.cm.Cvt.GetVideoWavFile(ui.VideoPath, ui.AudioDir, ui.cm.Cvt.CvtArgs)
-			fyne.Do(func() {
-				if err != nil {
-					fyne.LogError("GetVideoWavFile", err)
-					dialog.ShowInformation("Error", err.Error(), *ui.W)
-				} else {
-					dialog.ShowInformation("Success", "GetVideoWavFile success: Audio saved at "+ui.AudioDir, *ui.W)
-				}
-				ui.Btn.Enable()
-				progress.Hide()
+		runInBackground(*ui.W, ui.Btn, progress, "GetVideoWavFile",
+			"GetVideoWavFile success: Audio saved at "+ui.AudioDir,
+			func() error {
+				return ui.cm.Cvt.GetVideoWavFile(ui.VideoPath, ui.AudioDir, ui.cm.Cvt.CvtArgs)
 			})
-		}()
 	})
 
 	return container.NewVBox(tabs, ui.Btn, progress)

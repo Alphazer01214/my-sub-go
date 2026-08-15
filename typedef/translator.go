@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -51,9 +53,11 @@ type chatModel interface {
 }
 
 type TranslatorAPI struct {
-	cfg       *Config
-	ctx       context.Context
-	chatModel chatModel
+	cfg         *Config
+	ctx         context.Context
+	chatModel   chatModel
+	callTimeout time.Duration // 单次 LLM 调用的超时时间
+	logger      *log.Logger
 }
 
 type TranslateResult struct {
@@ -77,7 +81,19 @@ func (t *TranslatorAPI) Init(cfg *Config) error {
 		return fmt.Errorf("[LLM] can't init model: %w", err)
 	}
 	t.chatModel = m
+	t.callTimeout = time.Duration(cfg.LLMAPI.TimeoutSec) * time.Second
+	if t.callTimeout <= 0 {
+		t.callTimeout = 120 * time.Second
+	}
+	t.logger = log.New(os.Stderr, "[llm] ", log.LstdFlags)
 	return nil
+}
+
+// logf 输出日志；未注入 logger 时静默丢弃，保证零值对象与测试可用。
+func (t *TranslatorAPI) logf(format string, args ...any) {
+	if t.logger != nil {
+		t.logger.Printf(format, args...)
+	}
 }
 
 // newChatModel 按 provider 构造对应的 ChatModel；未知 provider 立即报错而不是延迟到调用期。
@@ -103,7 +119,7 @@ func newChatModel(ctx context.Context, cfg *LLMAPIConfig) (chatModel, error) {
 
 func (t *TranslatorAPI) Translate(sub *Subtitle) (Subtitle, error) {
 	segs := sub.Segments
-	fmt.Printf("[llm] found %d segments\n", len(segs))
+	t.logf("found %d segments", len(segs))
 	var transRes []TranslateResult
 	subRes := Subtitle{}
 	processWindow := t.cfg.LLMAPI.ProcessWindow
@@ -111,7 +127,7 @@ func (t *TranslatorAPI) Translate(sub *Subtitle) (Subtitle, error) {
 	userPrompt := t.cfg.LLMAPI.PromptTemplate
 	srcLang := t.cfg.LLMAPI.SrcLang
 	tgtLang := t.cfg.LLMAPI.TgtLang
-	fmt.Printf("[llm] start translating using %s \n", t.cfg.LLMAPI.ModelName)
+	t.logf("start translating using %s", t.cfg.LLMAPI.ModelName)
 
 	var errs []error
 	for i := 0; i < len(segs); i += processWindow {
@@ -129,12 +145,12 @@ func (t *TranslatorAPI) Translate(sub *Subtitle) (Subtitle, error) {
 			continue
 		}
 		if len(trans) == 0 {
-			fmt.Printf("[llm] empty response\n")
+			t.logf("empty response")
 			errs = append(errs, fmt.Errorf("[LLM] window [%d:%d] returned empty response", i, end))
 			transRes = appendPlaceholders(transRes, toTranslate)
 			continue
 		}
-		fmt.Printf("[llm] translating %d segments, example:[%d] %.23s \n", len(trans), trans[0].Index, trans[0].Translation)
+		t.logf("translating %d segments, example:[%d] %.23s", len(trans), trans[0].Index, trans[0].Translation)
 		transRes = append(transRes, trans...)
 	}
 	t.merge(segs, transRes)
@@ -145,7 +161,7 @@ func (t *TranslatorAPI) Translate(sub *Subtitle) (Subtitle, error) {
 	return subRes, nil
 }
 
-func (t *TranslatorAPI) buildPrompt(toTranslate []Segment, ctx []Segment, src string, tgt string, up string) string {
+func (t *TranslatorAPI) buildPrompt(toTranslate []Segment, ctx []Segment, src Lang, tgt Lang, up string) string {
 	template := defaultPrompt
 	var ctxBuilder strings.Builder
 	for _, segment := range ctx {
@@ -161,8 +177,8 @@ func (t *TranslatorAPI) buildPrompt(toTranslate []Segment, ctx []Segment, src st
 		transBuilder.WriteString(fmt.Sprintf("{index: %d, text: \"%s\"}\n", segment.Index, segment.Text))
 	}
 
-	prompt := strings.NewReplacer("{{.SrcLang}}", src,
-		"{{.TgtLang}}", tgt,
+	prompt := strings.NewReplacer("{{.SrcLang}}", string(src),
+		"{{.TgtLang}}", string(tgt),
 		"{{.Context}}", ctxBuilder.String(),
 		"{{.ToTranslate}}", transBuilder.String(),
 		"{{.UserPrompt}}", up).Replace(template)
@@ -170,31 +186,55 @@ func (t *TranslatorAPI) buildPrompt(toTranslate []Segment, ctx []Segment, src st
 }
 
 // call 以单一实现覆盖所有 provider：重试 + 解析逻辑只存在一份。
+// 每次调用受 t.callTimeout 限制，重试间隔可被 ctx 取消打断。
 func (t *TranslatorAPI) call(ctx context.Context, model chatModel, prompt string, retry int) ([]TranslateResult, error) {
+	if t.callTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, t.callTimeout)
+		defer cancel()
+	}
+
 	message := []*schema.Message{
 		schema.SystemMessage("You are an expert API, only response valid pure JSON format."),
 		schema.UserMessage(prompt),
 	}
-	fmt.Printf("[llm] calling llm: %s\n", prompt)
+	t.logf("calling llm: %s", prompt)
 
 	var lastErr error
 	for i := 0; i < retry; i++ {
 		response, err := model.Generate(ctx, message)
 		if err != nil {
 			lastErr = err
-			time.Sleep(2 * time.Second)
+			if !t.retryBackoff(ctx) {
+				return nil, fmt.Errorf("[LLM] call aborted: %w", ctx.Err())
+			}
 			continue
 		}
-		fmt.Printf("[llm] llm response: %s", response.Content)
+		t.logf("llm response: %s", response.Content)
 		res, err := parseTranslation(response.Content)
 		if err != nil {
 			lastErr = err
-			time.Sleep(2 * time.Second)
+			if !t.retryBackoff(ctx) {
+				return nil, fmt.Errorf("[LLM] call aborted: %w", ctx.Err())
+			}
 			continue
 		}
 		return res, nil
 	}
+	if lastErr == nil {
+		lastErr = errors.New("no attempts completed")
+	}
 	return nil, fmt.Errorf("[LLM] call failed after %d retries: %w", retry, lastErr)
+}
+
+// retryBackoff 等待 2 秒或直到 ctx 取消；ctx 取消时返回 false。
+func (t *TranslatorAPI) retryBackoff(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case <-time.After(2 * time.Second):
+		return true
+	}
 }
 
 // parseTranslation 把 LLM 返回内容解析为翻译结果，容忍 ```json 代码围栏。
@@ -249,7 +289,7 @@ func (t *TranslatorAPI) merge(segs []Segment, trans []TranslateResult) {
 		if tr, ok := transMap[segs[i].Index]; ok {
 			segs[i].Translation = tr
 		} else {
-			fmt.Printf("[LLM] can't find translation for segment %d, content: %s", segs[i].Index, segs[i].Text)
+			t.logf("can't find translation for segment %d, content: %s", segs[i].Index, segs[i].Text)
 		}
 	}
 }

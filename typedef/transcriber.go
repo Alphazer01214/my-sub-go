@@ -67,7 +67,7 @@ func (t *Transcriber) initContext() error {
 	}
 
 	if t.Cfg.Whisper.SrcLang != "" {
-		if err := t.ctx.SetLanguage(t.Cfg.Whisper.SrcLang); err != nil {
+		if err := t.ctx.SetLanguage(string(t.Cfg.Whisper.SrcLang)); err != nil {
 			return err
 		}
 	}
@@ -86,8 +86,8 @@ func (t *Transcriber) initContext() error {
 	fmt.Println("[whisper] Context loaded")
 	return nil
 }
-func (t *Transcriber) setLang(lang string) error {
-	err := t.ctx.SetLanguage(lang)
+func (t *Transcriber) setLang(lang Lang) error {
+	err := t.ctx.SetLanguage(string(lang))
 	if err != nil {
 		return err
 	}
@@ -118,7 +118,7 @@ func (t *Transcriber) process(path string) (*Subtitle, error) {
 	return sub, nil
 }
 
-func (t *Transcriber) processLangSpecific(path string, lang string) (*Subtitle, error) {
+func (t *Transcriber) processLangSpecific(path string, lang Lang) (*Subtitle, error) {
 	sub := &Subtitle{}
 	err := t.initContext()
 	if err != nil {
@@ -146,7 +146,7 @@ func (t *Transcriber) processLangSpecific(path string, lang string) (*Subtitle, 
 	return sub, nil
 }
 
-func (t *Transcriber) GetSRTSubtitleFileFromAudio(aPath string, saveSRTDir string, lang string) (*Subtitle, error) {
+func (t *Transcriber) GetSRTSubtitleFileFromAudio(aPath string, saveSRTDir string, lang Lang) (*Subtitle, error) {
 
 	sub, err := t.processLangSpecific(aPath, lang)
 	if err != nil {

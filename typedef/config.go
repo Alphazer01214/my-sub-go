@@ -2,12 +2,33 @@ package typedef
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 )
 
 // define: `json:"binary_path" label: "name" description: "xxx" type: "file/dir/int/string/bool/lang/textarea" placeholder: "default" options: "a,b,c" support_ext: ".mp4,.wmv"`
 
-var LangOptions = []string{"en", "zh", "ja", "ko", "fr", "de", "es", "ru", "auto"}
+// Lang 语言代码；目标语言不允许使用 "auto"。
+type Lang string
+
+const (
+	LangAuto Lang = "auto"
+	LangEn   Lang = "en"
+	LangZh   Lang = "zh"
+	LangJa   Lang = "ja"
+	LangKo   Lang = "ko"
+	LangFr   Lang = "fr"
+	LangDe   Lang = "de"
+	LangEs   Lang = "es"
+	LangRu   Lang = "ru"
+)
+
+// LangOptions GUI 下拉选项（保持 []string 以兼容 fyne Select）
+var LangOptions = []string{
+	string(LangEn), string(LangZh), string(LangJa), string(LangKo),
+	string(LangFr), string(LangDe), string(LangEs), string(LangRu), string(LangAuto),
+}
+
 var VideoType = []string{".mp4", ".wmv", ".avi", ".mkv", ".mov"}
 var AudioType = []string{".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac"}
 var ConfigPath = "config/conf.json"
@@ -37,7 +58,7 @@ type WhisperConfig struct {
 	BinaryPath       string `json:"binary_path" label:"Whisper路径" description:"Whisper可执行文件路径" type:"file" placeholder:"dependencies/whisper.cpp/bin/whisper-cli.exe" support_ext:".exe"`
 	ModelPath        string `json:"model_path" label:"模型路径" description:"Whisper模型文件路径" type:"file" placeholder:"models/whisper/ggml-medium.bin" support_ext:".bin"`
 	VADPath          string `json:"vad_path" label:"VAD路径" description:"语音活动检测模型路径" type:"file" placeholder:"models/vad/ggml-silero-v6.2.0.bin" support_ext:".bin"`
-	SrcLang          string `json:"src_lang" label:"源语言" description:"音频源语言" type:"lang" placeholder:"en"`
+	SrcLang          Lang   `json:"src_lang" label:"源语言" description:"音频源语言" type:"lang" placeholder:"en"`
 	ChunkDurationSec int    `json:"chunk_duration_sec" label:"切片时长" description:"音频分块时长(秒)" type:"int" placeholder:"20"` // 音频分块时长(秒)
 	ChunkOverlapSec  int    `json:"chunk_overlap_sec" label:"切片重叠" description:"音频分块重叠时长(秒)" type:"int" placeholder:"5"` // 音频分块重叠时长(秒)
 	Threads          int    `json:"threads" label:"线程数" description:"处理线程数量" type:"int" placeholder:"8"`
@@ -48,8 +69,8 @@ type LlamaConfig struct {
 	BinaryPath     string `json:"binary_path" label:"Llama路径" description:"Llama可执行文件路径" type:"file" placeholder:"dependencies/llama.cpp/bin/llama.exe" support_ext:".exe"`           // Llama可执行文件路径
 	ModelPath      string `json:"model_path" label:"模型路径" description:"Llama模型文件路径" type:"file" placeholder:"models/translator/translategemma-4b-it.Q4_K_M.gguf" support_ext:".gguf"` // Llama模型路径
 	PromptTemplate string `json:"prompt_template" label:"提示词模板" description:"翻译提示词模板" type:"textarea" placeholder:"You are an expert translator."`                                    // 提示词模板
-	SrcLang        string `json:"src_lang" label:"源语言" description:"翻译源语言" type:"lang" placeholder:"en"`                                                                              // 源语言
-	TgtLang        string `json:"tgt_lang" label:"目标语言" description:"翻译目标语言" type:"lang" placeholder:"zh"`
+	SrcLang        Lang   `json:"src_lang" label:"源语言" description:"翻译源语言" type:"lang" placeholder:"en"`                                                                              // 源语言
+	TgtLang        Lang   `json:"tgt_lang" label:"目标语言" description:"翻译目标语言" type:"lang" placeholder:"zh"`
 }
 
 // LLMProvider LLM 服务提供商类型
@@ -69,11 +90,12 @@ type LLMAPIConfig struct {
 	BaseURL        string      `json:"base_url" label:"Base URL" description:"API基础URL" type:"string" placeholder:"https://api.deepseek.com"`
 	ModelName      string      `json:"model_name" label:"模型名称" description:"使用的模型名称" type:"string" placeholder:"deepseek-chat"`
 	APIKey         string      `json:"api_key" label:"API Key" description:"API访问密钥" type:"string" placeholder:"sk-xxxxxxxx"`
-	SrcLang        string      `json:"src_lang" label:"源语言" description:"翻译源语言" type:"lang" placeholder:"en"`
-	TgtLang        string      `json:"tgt_lang" label:"目标语言" description:"翻译目标语言" type:"lang" placeholder:"zh"`
+	SrcLang        Lang        `json:"src_lang" label:"源语言" description:"翻译源语言" type:"lang" placeholder:"en"`
+	TgtLang        Lang        `json:"tgt_lang" label:"目标语言" description:"翻译目标语言" type:"lang" placeholder:"zh"`
 	PromptTemplate string      `json:"prompt_template" label:"提示词模板" description:"翻译提示词模板" type:"textarea" placeholder:"You are translating a Trance electronic music production tutorial."`
 	RefWindow      int         `json:"ref_window" label:"参考窗口" description:"参考上下文大小" type:"int" placeholder:"2"`
 	ProcessWindow  int         `json:"process_window" label:"处理窗口" description:"一次翻译句数" type:"int" placeholder:"8"`
+	TimeoutSec     int         `json:"timeout_sec" label:"超时(秒)" description:"单次LLM调用的超时时间(0=默认120秒)" type:"int" placeholder:"120"`
 }
 
 // Config 主配置结构体
@@ -117,6 +139,9 @@ func (cm *ConfigManager) Init() error {
 	if err != nil {
 		return err
 	}
+	if err := cm.Cfg.Validate(); err != nil {
+		return err
+	}
 
 	// get env variables
 	//if err := godotenv.Load(); err != nil {
@@ -126,6 +151,39 @@ func (cm *ConfigManager) Init() error {
 	//api := os.Getenv("LLM_API_KEY")
 	//name := os.Getenv("LLM_MODEL_NAME")
 
+	return nil
+}
+
+// Validate 校验配置中的语言代码；目标语言不允许为 "auto"。
+func (c *Config) Validate() error {
+	for _, item := range []struct {
+		name      string
+		lang      Lang
+		allowAuto bool
+	}{
+		{"whisper.src_lang", c.Whisper.SrcLang, true},
+		{"llama.src_lang", c.Llama.SrcLang, true},
+		{"llama.tgt_lang", c.Llama.TgtLang, false},
+		{"llm_api.src_lang", c.LLMAPI.SrcLang, true},
+		{"llm_api.tgt_lang", c.LLMAPI.TgtLang, false},
+	} {
+		if item.lang == "" {
+			continue // 未配置视为可选
+		}
+		if !item.allowAuto && item.lang == LangAuto {
+			return fmt.Errorf("%s: target language cannot be %q", item.name, item.lang)
+		}
+		valid := false
+		for _, opt := range LangOptions {
+			if item.lang == Lang(opt) {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			return fmt.Errorf("%s: unsupported language %q", item.name, item.lang)
+		}
+	}
 	return nil
 }
 

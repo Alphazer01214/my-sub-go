@@ -51,7 +51,7 @@ func (cm *ComponentManager) Init(cfg *Config, comps ...interface{}) error {
 	return nil
 }
 
-func (cm *ComponentManager) RunVideoTranscriber(vPath string, saveSRTDir string, lang string) (*Subtitle, error) {
+func (cm *ComponentManager) RunVideoTranscriber(vPath string, saveSRTDir string, lang Lang) (*Subtitle, error) {
 	// Pipeline
 	ext := filepath.Ext(vPath)
 	bs := strings.TrimSuffix(filepath.Base(vPath), ext)
@@ -81,7 +81,7 @@ func (cm *ComponentManager) RunVideoTranscriber(vPath string, saveSRTDir string,
 	return sub, nil
 }
 
-func (cm *ComponentManager) RunAudioTranscriber(aPath string, saveSRTDir string, lang string) (*Subtitle, error) {
+func (cm *ComponentManager) RunAudioTranscriber(aPath string, saveSRTDir string, lang Lang) (*Subtitle, error) {
 	// Pipeline
 	sub, err := cm.Ts.GetSRTSubtitleFileFromAudio(aPath, saveSRTDir, lang)
 	if err != nil {

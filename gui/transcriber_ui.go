@@ -6,7 +6,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -16,7 +15,7 @@ type TranscriberUI struct {
 	W           *fyne.Window
 	Path        string
 	SubtitleDir string
-	Lang        string
+	Lang        typedef.Lang
 	Btn         *widget.Button
 }
 
@@ -24,7 +23,7 @@ func NewTranscriberUI(cm *typedef.ComponentManager, w *fyne.Window) *Transcriber
 	return &TranscriberUI{
 		cm:          cm,
 		W:           w,
-		Lang:        "auto",
+		Lang:        typedef.LangAuto,
 		Path:        "test/test.mp4",
 		SubtitleDir: "test/",
 	}
@@ -61,7 +60,7 @@ func (ui *TranscriberUI) renderConfig() fyne.CanvasObject {
 
 	langField := reflect.StructField{
 		Name: "Lang",
-		Type: reflect.TypeOf(""),
+		Type: reflect.TypeOf(typedef.Lang("")),
 		Tag:  `json:"audio_codec" label:"音频语言" type:"lang"`,
 	}
 	codecValue := reflect.ValueOf(&ui.Lang).Elem()
@@ -75,21 +74,12 @@ func (ui *TranscriberUI) RenderTranscriberWindow() fyne.CanvasObject {
 	progress := widget.NewProgressBarInfinite()
 	progress.Hide()
 	ui.Btn = widget.NewButton("execute", func() {
-		ui.Btn.Disable()
-		progress.Show()
-		go func() {
-			_, err := ui.cm.RunVideoTranscriber(ui.Path, ui.SubtitleDir, ui.Lang)
-			fyne.Do(func() {
-				if err != nil {
-					fyne.LogError("GetSRTSubtitleFile", err)
-					dialog.ShowInformation("Error", err.Error(), *ui.W)
-				} else {
-					dialog.ShowInformation("Success", "GetSRTSubtitleFile success: Subtitle saved at "+ui.SubtitleDir, *ui.W)
-				}
-				ui.Btn.Enable()
-				progress.Hide()
+		runInBackground(*ui.W, ui.Btn, progress, "GetSRTSubtitleFile",
+			"GetSRTSubtitleFile success: Subtitle saved at "+ui.SubtitleDir,
+			func() error {
+				_, err := ui.cm.RunVideoTranscriber(ui.Path, ui.SubtitleDir, ui.Lang)
+				return err
 			})
-		}()
 	})
 
 	return container.NewVBox(tabs, ui.Btn, progress)

@@ -6,7 +6,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -64,21 +63,11 @@ func (ui *TranslatorUI) RenderTranslatorWindow() fyne.CanvasObject {
 	progress := widget.NewProgressBarInfinite()
 	progress.Hide()
 	ui.Btn = widget.NewButton("execute", func() {
-		ui.Btn.Disable()
-		progress.Show()
-		go func() {
-			err := ui.cm.RunTranslatorAPIPipeline(ui.MediaPath, ui.SubtitleDir)
-			fyne.Do(func() {
-				if err != nil {
-					fyne.LogError("RunTranslatorAPIPipeline", err)
-					dialog.ShowInformation("Error", err.Error(), *ui.W)
-				} else {
-					dialog.ShowInformation("Success", "RunTranslatorAPIPipeline success: Subtitle saved at "+ui.SubtitleDir, *ui.W)
-				}
-				ui.Btn.Enable()
-				progress.Hide()
+		runInBackground(*ui.W, ui.Btn, progress, "RunTranslatorAPIPipeline",
+			"RunTranslatorAPIPipeline success: Subtitle saved at "+ui.SubtitleDir,
+			func() error {
+				return ui.cm.RunTranslatorAPIPipeline(ui.MediaPath, ui.SubtitleDir)
 			})
-		}()
 	})
 
 	return container.NewVBox(tabs, ui.Btn, progress)
