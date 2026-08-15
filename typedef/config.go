@@ -52,17 +52,28 @@ type LlamaConfig struct {
 	TgtLang        string `json:"tgt_lang" label:"目标语言" description:"翻译目标语言" type:"lang" placeholder:"zh"`
 }
 
+// LLMProvider LLM 服务提供商类型
+type LLMProvider string
+
+const (
+	LLMProviderOpenAI   LLMProvider = "openai"
+	LLMProviderDeepSeek LLMProvider = "deepseek"
+	LLMProviderQwen     LLMProvider = "qwen"
+	LLMProviderClaude   LLMProvider = "claude"
+	LLMProviderOllama   LLMProvider = "ollama"
+)
+
 // LLMAPIConfig LLM API配置
 type LLMAPIConfig struct {
-	Provider       string `json:"provider" label:"提供商" description:"LLM服务提供商" type:"string" placeholder:"deepseek" options:"openai,deepseek,qwen,claude"`
-	BaseURL        string `json:"base_url" label:"Base URL" description:"API基础URL" type:"string" placeholder:"https://api.deepseek.com"`
-	ModelName      string `json:"model_name" label:"模型名称" description:"使用的模型名称" type:"string" placeholder:"deepseek-chat"`
-	APIKey         string `json:"api_key" label:"API Key" description:"API访问密钥" type:"string" placeholder:"sk-xxxxxxxx"`
-	SrcLang        string `json:"src_lang" label:"源语言" description:"翻译源语言" type:"lang" placeholder:"en"`
-	TgtLang        string `json:"tgt_lang" label:"目标语言" description:"翻译目标语言" type:"lang" placeholder:"zh"`
-	PromptTemplate string `json:"prompt_template" label:"提示词模板" description:"翻译提示词模板" type:"textarea" placeholder:"You are translating a Trance electronic music production tutorial."`
-	RefWindow      int    `json:"ref_window" label:"参考窗口" description:"参考上下文大小" type:"int" placeholder:"2"`
-	ProcessWindow  int    `json:"process_window" label:"处理窗口" description:"一次翻译句数" type:"int" placeholder:"8"`
+	Provider       LLMProvider `json:"provider" label:"提供商" description:"LLM服务提供商" type:"string" placeholder:"deepseek" options:"openai,deepseek,qwen,claude,ollama"`
+	BaseURL        string      `json:"base_url" label:"Base URL" description:"API基础URL" type:"string" placeholder:"https://api.deepseek.com"`
+	ModelName      string      `json:"model_name" label:"模型名称" description:"使用的模型名称" type:"string" placeholder:"deepseek-chat"`
+	APIKey         string      `json:"api_key" label:"API Key" description:"API访问密钥" type:"string" placeholder:"sk-xxxxxxxx"`
+	SrcLang        string      `json:"src_lang" label:"源语言" description:"翻译源语言" type:"lang" placeholder:"en"`
+	TgtLang        string      `json:"tgt_lang" label:"目标语言" description:"翻译目标语言" type:"lang" placeholder:"zh"`
+	PromptTemplate string      `json:"prompt_template" label:"提示词模板" description:"翻译提示词模板" type:"textarea" placeholder:"You are translating a Trance electronic music production tutorial."`
+	RefWindow      int         `json:"ref_window" label:"参考窗口" description:"参考上下文大小" type:"int" placeholder:"2"`
+	ProcessWindow  int         `json:"process_window" label:"处理窗口" description:"一次翻译句数" type:"int" placeholder:"8"`
 }
 
 // Config 主配置结构体
@@ -93,7 +104,11 @@ func NewConfigManager(path string) *ConfigManager {
 
 func (cm *ConfigManager) Init() error {
 	// read config file
-	data, err := os.ReadFile("config/conf.json")
+	configPath := cm.path
+	if configPath == "" {
+		configPath = ConfigPath
+	}
+	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return err
 	}

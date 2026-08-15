@@ -15,15 +15,17 @@ type ComponentManager struct {
 	TlAPI *TranslatorAPI
 }
 
-func NewComponentManager(cfg *Config, comps ...interface{}) *ComponentManager {
+func NewComponentManager(cfg *Config, comps ...interface{}) (*ComponentManager, error) {
 	var cm = &ComponentManager{
 		Cfg: cfg,
 	}
-	cm.Init(cfg, comps...)
-	return cm
+	if err := cm.Init(cfg, comps...); err != nil {
+		return nil, err
+	}
+	return cm, nil
 }
 
-func (cm *ComponentManager) Init(cfg *Config, comps ...interface{}) {
+func (cm *ComponentManager) Init(cfg *Config, comps ...interface{}) error {
 	for _, comp := range comps {
 		switch comp.(type) {
 		case *Converter:
@@ -35,13 +37,18 @@ func (cm *ComponentManager) Init(cfg *Config, comps ...interface{}) {
 			fmt.Println("[main window] transcriber mounted")
 
 		case *TranslatorAPI:
-			cm.TlAPI = NewTranslatorAPI(cfg)
+			tl, err := NewTranslatorAPI(cfg)
+			if err != nil {
+				return fmt.Errorf("[main window] translator init failed: %w", err)
+			}
+			cm.TlAPI = tl
 			fmt.Println("[main window] translator mounted")
 
 		default:
 			fmt.Println("[main window] unknown component")
 		}
 	}
+	return nil
 }
 
 func (cm *ComponentManager) RunVideoTranscriber(vPath string, saveSRTDir string, lang string) (*Subtitle, error) {

@@ -28,7 +28,11 @@ func main() {
 	var cvt typedef.Converter
 	var ts typedef.Transcriber
 	var tl typedef.TranslatorAPI
-	cpm := typedef.NewComponentManager(cm.Cfg, &cvt, &ts, &tl)
+	cpm, err := typedef.NewComponentManager(cm.Cfg, &cvt, &ts, &tl)
+	if err != nil {
+		fmt.Println("Error initializing components:", err)
+		os.Exit(1)
+	}
 	a := app.NewWithID("com.example.my-sub-go")
 	var instance = gui.NewInstance(a)
 	if err := instance.Init(cm, cpm); err != nil {

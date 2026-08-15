@@ -1,6 +1,8 @@
-﻿.env
+.env
 .idea/
 models/
 test/
+.buildcache/
+release/
 *.dll
 *.exe

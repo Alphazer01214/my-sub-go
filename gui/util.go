@@ -241,22 +241,24 @@ func restartApp() {
 	// 获取当前可执行文件路径
 	exe, err := os.Executable()
 	if err != nil {
+		fyne.LogError("restartApp: get executable path", err)
 		return
 	}
 
 	// 根据操作系统不同处理
 	switch runtime.GOOS {
 	case "windows":
-		// Windows 上使用 cmd /c start 来启动新进程
-		cmd := exec.Command("cmd", "/c", "start", exe)
-		err := cmd.Start()
-		if err != nil {
+		// Windows 上使用 cmd /c start 来启动新进程；
+		// 空字符串占位标题，避免 start 把带引号的路径误当作窗口标题。
+		cmd := exec.Command("cmd", "/c", "start", "", exe)
+		if err := cmd.Start(); err != nil {
+			fyne.LogError("restartApp: start new process", err)
 			return
 		}
 	case "darwin", "linux":
 		// Unix-like 系统使用 syscall.Exec
-		err = syscall.Exec(exe, os.Args, os.Environ())
-		if err != nil {
+		if err := syscall.Exec(exe, os.Args, os.Environ()); err != nil {
+			fyne.LogError("restartApp: exec", err)
 			return
 		}
 	}
