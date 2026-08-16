@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"my-sub-go/common/logx"
 	"my-sub-go/typedef"
 	"reflect"
 
@@ -24,10 +25,11 @@ type ConverterUI struct {
 }
 
 func NewConverterUI(cm *typedef.ComponentManager, w *fyne.Window) *ConverterUI {
+	st := typedef.LoadState(typedef.StatePath)
 	return &ConverterUI{
 		cm:         cm,
-		VideoPath:  "test/test.mp4",
-		AudioDir:   ".",
+		VideoPath:  st.Converter.VideoPath,
+		AudioDir:   st.Converter.AudioDir,
 		AudioCodec: "pcm_s16le",
 		Channels:   2,
 		SampleRate: 16000,
@@ -36,12 +38,22 @@ func NewConverterUI(cm *typedef.ComponentManager, w *fyne.Window) *ConverterUI {
 	}
 }
 
+// saveState 记住本次选择，下次启动自动填入。
+func (ui *ConverterUI) saveState() {
+	st := typedef.LoadState(typedef.StatePath)
+	st.Converter.VideoPath = ui.VideoPath
+	st.Converter.AudioDir = ui.AudioDir
+	if err := st.Save(typedef.StatePath); err != nil {
+		logx.Error(logx.ModuleSystem, "保存界面状态失败: %v", err)
+	}
+}
+
 func (ui *ConverterUI) renderField(field *reflect.StructField, value *reflect.Value) fyne.CanvasObject {
 	// define: `json:"binary_path" label: "name" description: "xxx" type: "file/dir/int/string/bool/lang/textarea" placeholder: "default" options: "a,b,c" support_ext: ".mp4,.wmv"`
 	label := field.Tag.Get("label")
 	fieldType := field.Tag.Get("type")
 
-	obj := getRealTimeObj(ui.W, fieldType, value)
+	obj := getRealTimeObj(ui.W, fieldType, value, field.Tag.Get("support_ext"), ui.saveState)
 	//ui.Items[field.Name] = bind
 	return container.NewVBox(widget.NewLabel(label), obj)
 }

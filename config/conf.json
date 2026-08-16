@@ -22,14 +22,15 @@
   },
   "llm_api": {
     "provider": "openai",
-    "base_url": "http://localhost:11434",
+    "base_url": "http://localhost:8080",
     "model_name": "gemma-4-e4b-abliterated",
     "api_key": "114514",
     "src_lang": "ja",
     "tgt_lang": "zh",
     "prompt_template": "",
     "ref_window": 2,
-    "process_window": 8
+    "process_window": 8,
+    "timeout_sec": 0
   },
   "cuda": true,
   "default_output_dir": "output",

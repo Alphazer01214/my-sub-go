@@ -1,11 +1,16 @@
 package typedef
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
+	"time"
+
+	"my-sub-go/common/logx"
 )
 
 type Converter struct {
@@ -37,38 +42,84 @@ func (cvt *Converter) Init(cfg *Config) error {
 	}
 	return nil
 }
+
+// runFFmpeg 执行 ffmpeg，stderr 进日志；失败时错误信息带 stderr 尾部。
+func (cvt *Converter) runFFmpeg(args ...string) error {
+	logx.Info(logx.ModuleFFmpeg, "执行: %s %s", cvt.Cfg.FFmpeg.BinaryPath, strings.Join(args, " "))
+	var stderr bytes.Buffer
+	cmd := exec.Command(cvt.Cfg.FFmpeg.BinaryPath, args...)
+	cmd.Stderr = &stderr
+	start := time.Now()
+	if err := cmd.Run(); err != nil {
+		tail := stderr.String()
+		logx.Error(logx.ModuleFFmpeg, "ffmpeg 失败 (%.1f 秒): %v\n%s", time.Since(start).Seconds(), err, tailStr(tail, 2000))
+		return fmt.Errorf("[FFmpeg] failed: %v\n%s", err, tailStr(tail, 500))
+	}
+	logx.Info(logx.ModuleFFmpeg, "ffmpeg 完成 (%.1f 秒)", time.Since(start).Seconds())
+	return nil
+}
+
+// tailStr 截取文本末尾最多 n 个字符。
+func tailStr(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return "…" + s[len(s)-n:]
+}
+
+// GetWavTmpFile 从视频抽取单声道 16k wav 到 targetAudioPath（转录用）。
 func (cvt *Converter) GetWavTmpFile(videoPath string, targetAudioPath string) error {
 	cvt.isProcessing = true
-	if _, err := os.Stat(targetAudioPath); os.IsNotExist(err) {
-		return fmt.Errorf("[FFmpeg] invalid target dir: %v \n %v", targetAudioPath, err)
+	defer func() { cvt.isProcessing = false }()
+
+	if err := os.MkdirAll(filepath.Dir(targetAudioPath), 0755); err != nil {
+		return fmt.Errorf("[FFmpeg] invalid target dir: %v \n %v", filepath.Dir(targetAudioPath), err)
 	}
 	if _, err := os.Stat(videoPath); os.IsNotExist(err) {
 		return fmt.Errorf("[FFmpeg] invalid video path: %s", videoPath)
 	}
 
 	suf := strings.ToLower(filepath.Ext(videoPath))
-
-	for _, s := range VideoType {
-		if suf == s {
-			args := []string{
-				"-i", videoPath,
-				"-vn",
-				"-acodec", cvt.Cfg.FFmpeg.AudioCodec,
-				"-ac", "1",
-				"-ar", fmt.Sprintf("%d", cvt.Cfg.FFmpeg.SampleRate),
-				"-f", "wav",
-				"-y",
-				targetAudioPath,
-			}
-			cmd := exec.Command(cvt.Cfg.FFmpeg.BinaryPath, args...)
-			if err := cmd.Run(); err != nil {
-				cvt.isProcessing = false
-				return fmt.Errorf("[FFmpeg] failed to extract audio: %v \n %v", videoPath, err)
-			}
-		}
+	if !slices.Contains(VideoType, suf) {
+		return fmt.Errorf("[FFmpeg] unsupported video format: %s", suf)
 	}
-	cvt.isProcessing = false
-	return nil
+
+	args := []string{
+		"-i", videoPath,
+		"-vn",
+		"-acodec", cvt.Cfg.FFmpeg.AudioCodec,
+		"-ac", "1",
+		"-ar", fmt.Sprintf("%d", cvt.Cfg.FFmpeg.SampleRate),
+		"-f", "wav",
+		"-y",
+		targetAudioPath,
+	}
+	return cvt.runFFmpeg(args...)
+}
+
+// GetAudioWavFile 把任意音频文件转成单声道 16k wav（转录用）。
+func (cvt *Converter) GetAudioWavFile(audioPath string, targetAudioPath string) error {
+	cvt.isProcessing = true
+	defer func() { cvt.isProcessing = false }()
+
+	if err := os.MkdirAll(filepath.Dir(targetAudioPath), 0755); err != nil {
+		return fmt.Errorf("[FFmpeg] invalid target dir: %v \n %v", filepath.Dir(targetAudioPath), err)
+	}
+	if _, err := os.Stat(audioPath); os.IsNotExist(err) {
+		return fmt.Errorf("[FFmpeg] invalid audio path: %s", audioPath)
+	}
+
+	args := []string{
+		"-i", audioPath,
+		"-vn",
+		"-acodec", cvt.Cfg.FFmpeg.AudioCodec,
+		"-ac", "1",
+		"-ar", fmt.Sprintf("%d", cvt.Cfg.FFmpeg.SampleRate),
+		"-f", "wav",
+		"-y",
+		targetAudioPath,
+	}
+	return cvt.runFFmpeg(args...)
 }
 
 func (cvt *Converter) GetVideoWavFile(videoPath string, targetAudioDir string, args *ConverterArgs) error {
@@ -82,24 +133,21 @@ func (cvt *Converter) GetVideoWavFile(videoPath string, targetAudioDir string, a
 	ext := strings.ToLower(filepath.Ext(videoPath))
 	base := strings.TrimSuffix(filepath.Base(videoPath), ext)
 
-	for _, s := range []string{".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm"} {
-		if ext == s {
-			args := []string{
-				"-i", videoPath,
-				"-vn",
-				"-acodec", args.AudioCodec,
-				"-ac", fmt.Sprintf("%d", args.Channels),
-				"-ar", fmt.Sprintf("%d", args.SampleRate),
-				"-f", "wav",
-				"-y",
-				filepath.Join(targetAudioDir, base+".wav"),
-			}
-			cmd := exec.Command(cvt.Cfg.FFmpeg.BinaryPath, args...)
-			return cmd.Run()
-		}
+	if !slices.Contains(VideoType, ext) {
+		return fmt.Errorf("[FFmpeg] unsupported video format: %s", ext)
 	}
 
-	return fmt.Errorf("[FFmpeg] unsupported video format: %s", ext)
+	ffArgs := []string{
+		"-i", videoPath,
+		"-vn",
+		"-acodec", args.AudioCodec,
+		"-ac", fmt.Sprintf("%d", args.Channels),
+		"-ar", fmt.Sprintf("%d", args.SampleRate),
+		"-f", "wav",
+		"-y",
+		filepath.Join(targetAudioDir, base+".wav"),
+	}
+	return cvt.runFFmpeg(ffArgs...)
 }
 
 func (cvt *Converter) Update(cfg *Config) {

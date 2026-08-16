@@ -12,7 +12,7 @@ package main
 import "C"
 
 import (
-	"fmt"
+	"my-sub-go/common/logx"
 	"my-sub-go/gui"
 	"my-sub-go/typedef"
 	"os"
@@ -21,25 +21,36 @@ import (
 )
 
 func main() {
+	// 日志系统最先初始化；GUI 尚未创建时致命错误用 MessageBox + 日志文件呈现。
+	_ = logx.Init()
+	defer logx.Close()
+	logx.Info(logx.ModuleSystem, "程序启动")
+
+	fail := func(step string, err error) {
+		logx.Error(logx.ModuleSystem, "%s失败: %v", step, err)
+		logx.MessageBox("MyGoAutoSub 启动失败", step+"失败：\n"+err.Error())
+		os.Exit(1)
+	}
+
 	cm := typedef.NewConfigManager(typedef.ConfigPath)
 	if err := cm.Init(); err != nil {
-		panic(err)
+		fail("加载配置文件 config/conf.json", err)
 	}
+
 	var cvt typedef.Converter
 	var ts typedef.Transcriber
 	var tl typedef.TranslatorAPI
 	cpm, err := typedef.NewComponentManager(cm.Cfg, &cvt, &ts, &tl)
 	if err != nil {
-		fmt.Println("Error initializing components:", err)
-		os.Exit(1)
+		fail("初始化组件", err)
 	}
+
 	a := app.NewWithID("com.example.my-sub-go")
 	var instance = gui.NewInstance(a)
 	if err := instance.Init(cm, cpm); err != nil {
-		fmt.Println("Error initializing instance:", err)
-		os.Exit(1)
+		fail("初始化界面", err)
 	}
 	instance.Run()
 
-	fmt.Println("finished")
+	logx.Info(logx.ModuleSystem, "程序退出")
 }

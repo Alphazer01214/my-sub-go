@@ -3,6 +3,10 @@
 models/
 test/
 .buildcache/
+.gocache/
+.gotmp/
 release/
+logs/
+config/state.json
 *.dll
 *.exe
