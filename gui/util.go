@@ -1,35 +1,40 @@
 package gui
 
 import (
-	"my-sub-go/typedef"
-	"os"
-	"os/exec"
+	"path/filepath"
 	"reflect"
-	"runtime"
 	"strconv"
-	"syscall"
+	"strings"
+
+	"my-sub-go/common/logx"
+	"my-sub-go/typedef"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/widget"
 )
 
-func getRealTimeObj(w *fyne.Window, fieldType string, value *reflect.Value) fyne.CanvasObject {
+// getRealTimeObj 根据字段类型生成对应控件。
+// supportExt: 文件选择对话框的扩展名过滤（逗号分隔，如 ".mp4,.mkv"），空则不过滤。
+// onChanged: 值发生变化后的回调（用于保存界面状态），可为 nil。
+func getRealTimeObj(w *fyne.Window, fieldType string, value *reflect.Value, supportExt string, onChanged func()) fyne.CanvasObject {
 	var obj fyne.CanvasObject
+	exts := splitExts(supportExt)
 	switch fieldType {
 	case "bool":
 		b := binding.NewBool()
 		if err := b.Set(value.Bool()); err != nil {
-			panic(err)
+			logx.Error(logx.ModuleSystem, "bool 控件绑定失败: %v", err)
 		}
 		obj = widget.NewCheckWithData("", b)
 
 	case "int":
 		b := binding.NewInt()
 		if err := b.Set(int(value.Int())); err != nil {
-			panic(err)
+			logx.Error(logx.ModuleSystem, "int 控件绑定失败: %v", err)
 		}
 		entry := widget.NewEntryWithData(binding.IntToString(b))
 		entry.OnChanged = func(s string) {
@@ -45,7 +50,7 @@ func getRealTimeObj(w *fyne.Window, fieldType string, value *reflect.Value) fyne
 	case "textarea":
 		b := binding.NewString()
 		if err := b.Set(value.String()); err != nil {
-			panic(err)
+			logx.Error(logx.ModuleSystem, "textarea 控件绑定失败: %v", err)
 		}
 		e := widget.NewEntryWithData(b)
 		e.MultiLine = true
@@ -57,7 +62,7 @@ func getRealTimeObj(w *fyne.Window, fieldType string, value *reflect.Value) fyne
 	case "lang":
 		b := binding.NewString()
 		if err := b.Set(value.String()); err != nil {
-			panic(err)
+			logx.Error(logx.ModuleSystem, "lang 控件绑定失败: %v", err)
 		}
 		entry := widget.NewSelectWithData(typedef.LangOptions, b)
 		entry.OnChanged = func(s string) {
@@ -68,11 +73,14 @@ func getRealTimeObj(w *fyne.Window, fieldType string, value *reflect.Value) fyne
 	case "dir":
 		b := binding.NewString()
 		if err := b.Set(value.String()); err != nil {
-			panic(err)
+			logx.Error(logx.ModuleSystem, "dir 控件绑定失败: %v", err)
 		}
 		entry := widget.NewEntryWithData(b)
 		entry.OnChanged = func(s string) {
 			value.SetString(s)
+			if onChanged != nil {
+				onChanged()
+			}
 		}
 		//entry.Disable()
 		entry.TextStyle = fyne.TextStyle{Bold: true}
@@ -85,14 +93,12 @@ func getRealTimeObj(w *fyne.Window, fieldType string, value *reflect.Value) fyne
 					if err != nil {
 						return
 					}
+					if onChanged != nil {
+						onChanged()
+					}
 				}
 			}, *w)
-			//if currentDir := value.String(); currentDir != "" {
-			//	path, _ := storage.ParseURI(filepath.Dir(currentDir))
-			//	listable, _ := storage.ListerForURI(path)
-			//	d.SetLocation(listable)
-			//}
-
+			setDialogLocation(d, value.String())
 			d.Show()
 		})
 		obj = container.NewGridWithColumns(2, entry, btn)
@@ -100,11 +106,14 @@ func getRealTimeObj(w *fyne.Window, fieldType string, value *reflect.Value) fyne
 	case "file":
 		b := binding.NewString()
 		if err := b.Set(value.String()); err != nil {
-			panic(err)
+			logx.Error(logx.ModuleSystem, "file 控件绑定失败: %v", err)
 		}
 		entry := widget.NewEntryWithData(b)
 		entry.OnChanged = func(s string) {
 			value.SetString(s)
+			if onChanged != nil {
+				onChanged()
+			}
 		}
 		entry.TextStyle = fyne.TextStyle{Bold: true}
 		//entry.Disable()
@@ -116,13 +125,15 @@ func getRealTimeObj(w *fyne.Window, fieldType string, value *reflect.Value) fyne
 					if err != nil {
 						return
 					}
+					if onChanged != nil {
+						onChanged()
+					}
 				}
 			}, *w)
-			//if currentPath := value.String(); currentPath != "" {
-			//	path, _ := storage.ParseURI(filepath.Dir(currentPath))
-			//	listable, _ := storage.ListerForURI(path)
-			//	d.SetLocation(listable)
-			//}
+			setDialogLocation(d, value.String())
+			if len(exts) > 0 {
+				d.SetFilter(storage.NewExtensionFileFilter(exts))
+			}
 			d.Show()
 		})
 		obj = container.NewGridWithColumns(2, entry, btn)
@@ -131,7 +142,7 @@ func getRealTimeObj(w *fyne.Window, fieldType string, value *reflect.Value) fyne
 		// string
 		b := binding.NewString()
 		if err := b.Set(value.String()); err != nil {
-			panic(err)
+			logx.Error(logx.ModuleSystem, "string 控件绑定失败: %v", err)
 		}
 		entry := widget.NewEntryWithData(b)
 		entry.OnChanged = func(s string) {
@@ -142,12 +153,47 @@ func getRealTimeObj(w *fyne.Window, fieldType string, value *reflect.Value) fyne
 
 	return obj
 }
+
+// splitExts 把 ".mp4,.mkv" 拆成 []string，空串返回 nil。
+func splitExts(support string) []string {
+	if strings.TrimSpace(support) == "" {
+		return nil
+	}
+	parts := strings.Split(support, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// setDialogLocation 把文件/目录对话框定位到当前值所在目录，
+// 避免每次都从根目录/工作目录全量扫描（加速对话框弹出）。
+func setDialogLocation(d dialog.Dialog, current string) {
+	if strings.TrimSpace(current) == "" {
+		return
+	}
+	uri, err := storage.ParseURI("file://" + filepath.ToSlash(filepath.Dir(current)))
+	if err != nil {
+		return
+	}
+	l, err := storage.ListerForURI(uri)
+	if err != nil {
+		return
+	}
+	if fd, ok := d.(interface{ SetLocation(fyne.ListableURI) }); ok {
+		fd.SetLocation(l)
+	}
+}
+
 func bindObj(fieldType string, value *reflect.Value, bind binding.DataItem, obj fyne.CanvasObject) (binding.DataItem, fyne.CanvasObject) {
 	switch fieldType {
 	case "bool":
 		b := binding.NewBool()
 		if err := b.Set(value.Bool()); err != nil {
-			panic(err)
+			logx.Error(logx.ModuleSystem, "bool 控件绑定失败: %v", err)
 		}
 		bind = b
 		obj = widget.NewCheckWithData("", b)
@@ -155,7 +201,7 @@ func bindObj(fieldType string, value *reflect.Value, bind binding.DataItem, obj 
 	case "int":
 		b := binding.NewInt()
 		if err := b.Set(int(value.Int())); err != nil {
-			panic(err)
+			logx.Error(logx.ModuleSystem, "int 控件绑定失败: %v", err)
 		}
 		bind = b
 		obj = widget.NewEntryWithData(binding.IntToString(b))
@@ -163,7 +209,7 @@ func bindObj(fieldType string, value *reflect.Value, bind binding.DataItem, obj 
 	case "textarea":
 		b := binding.NewString()
 		if err := b.Set(value.String()); err != nil {
-			panic(err)
+			logx.Error(logx.ModuleSystem, "textarea 控件绑定失败: %v", err)
 		}
 		bind = b
 		e := widget.NewEntryWithData(b)
@@ -173,7 +219,7 @@ func bindObj(fieldType string, value *reflect.Value, bind binding.DataItem, obj 
 	case "lang":
 		b := binding.NewString()
 		if err := b.Set(value.String()); err != nil {
-			panic(err)
+			logx.Error(logx.ModuleSystem, "lang 控件绑定失败: %v", err)
 		}
 		bind = b
 		obj = widget.NewSelectWithData(typedef.LangOptions, b)
@@ -227,7 +273,7 @@ func bindObj(fieldType string, value *reflect.Value, bind binding.DataItem, obj 
 		// string
 		b := binding.NewString()
 		if err := b.Set(value.String()); err != nil {
-			panic(err)
+			logx.Error(logx.ModuleSystem, "string 控件绑定失败: %v", err)
 		}
 		bind = b
 		obj = widget.NewEntryWithData(b)
@@ -236,35 +282,10 @@ func bindObj(fieldType string, value *reflect.Value, bind binding.DataItem, obj 
 	return bind, obj
 }
 
-// restartApp 重启当前程序
-func restartApp() {
-	// 获取当前可执行文件路径
-	exe, err := os.Executable()
-	if err != nil {
-		fyne.LogError("restartApp: get executable path", err)
-		return
-	}
-
-	// 根据操作系统不同处理
-	switch runtime.GOOS {
-	case "windows":
-		// Windows 上使用 cmd /c start 来启动新进程；
-		// 空字符串占位标题，避免 start 把带引号的路径误当作窗口标题。
-		cmd := exec.Command("cmd", "/c", "start", "", exe)
-		if err := cmd.Start(); err != nil {
-			fyne.LogError("restartApp: start new process", err)
-			return
-		}
-	case "darwin", "linux":
-		// Unix-like 系统使用 syscall.Exec
-		if err := syscall.Exec(exe, os.Args, os.Environ()); err != nil {
-			fyne.LogError("restartApp: exec", err)
-			return
-		}
-	}
-
-	// 退出当前程序
-	os.Exit(0)
+// showErrorDialog 弹错误框，并把同一错误写入系统日志（弹窗错误必须留痕可查）。
+func showErrorDialog(w fyne.Window, err error) {
+	logx.Error(logx.ModuleSystem, "界面错误弹窗: %v", err)
+	dialog.ShowError(err, w)
 }
 
 // runInBackground 在后台 goroutine 执行耗时操作，完成后回到 UI 线程恢复控件状态并弹窗。
@@ -276,8 +297,10 @@ func runInBackground(w fyne.Window, btn *widget.Button, progress *widget.Progres
 		fyne.Do(func() {
 			if err != nil {
 				fyne.LogError(name, err)
-				dialog.ShowInformation("Error", err.Error(), w)
+				logx.Error(logx.ModuleSystem, "%s 失败: %v", name, err)
+				showErrorDialog(w, err)
 			} else {
+				logx.Info(logx.ModuleSystem, "%s 成功", name)
 				dialog.ShowInformation("Success", successMsg, w)
 			}
 			btn.Enable()

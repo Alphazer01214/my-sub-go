@@ -29,7 +29,18 @@ var LangOptions = []string{
 	string(LangFr), string(LangDe), string(LangEs), string(LangRu), string(LangAuto),
 }
 
-var VideoType = []string{".mp4", ".wmv", ".avi", ".mkv", ".mov"}
+// TgtLangOptions 目标语言下拉选项：不含 "auto"（目标语言不允许自动检测）。
+var TgtLangOptions = func() []string {
+	out := make([]string, 0, len(LangOptions)-1)
+	for _, l := range LangOptions {
+		if l != string(LangAuto) {
+			out = append(out, l)
+		}
+	}
+	return out
+}()
+
+var VideoType = []string{".mp4", ".wmv", ".avi", ".mkv", ".mov", ".flv", ".webm"}
 var AudioType = []string{".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac"}
 var ConfigPath = "config/conf.json"
 

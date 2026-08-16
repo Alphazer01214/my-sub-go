@@ -3,6 +3,8 @@ package common
 import (
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-audio/audio"
@@ -17,6 +19,38 @@ func SRTTimeToString(t time.Duration) string {
 	ms := int(t.Milliseconds()) % 1000
 
 	return fmt.Sprintf("%02d:%02d:%02d,%03d", h, m, s, ms)
+}
+
+// SRTTimeParse 解析 "HH:MM:SS,mmm" 或 "HH:MM:SS.mmm"（毫秒 1-3 位均可）。
+func SRTTimeParse(s string) (time.Duration, error) {
+	s = strings.TrimSpace(s)
+	sep := strings.LastIndexAny(s, ",.")
+	if sep < 0 || sep == len(s)-1 {
+		return 0, fmt.Errorf("缺少毫秒分隔符: %q", s)
+	}
+	hms := strings.Split(s[:sep], ":")
+	if len(hms) != 3 {
+		return 0, fmt.Errorf("时间格式应为 HH:MM:SS,mmm: %q", s)
+	}
+	h, err1 := strconv.Atoi(hms[0])
+	m, err2 := strconv.Atoi(hms[1])
+	sec, err3 := strconv.Atoi(hms[2])
+	if err1 != nil || err2 != nil || err3 != nil {
+		return 0, fmt.Errorf("时间格式应为 HH:MM:SS,mmm: %q", s)
+	}
+	msStr := s[sep+1:]
+	ms, err := strconv.Atoi(msStr)
+	if err != nil || ms < 0 {
+		return 0, fmt.Errorf("毫秒无效: %q", s)
+	}
+	for i := len(msStr); i < 3; i++ { // 按实际位数解释
+		ms *= 10
+	}
+	if m > 59 || sec > 59 {
+		return 0, fmt.Errorf("时间超出范围: %q", s)
+	}
+	return time.Duration(h)*time.Hour + time.Duration(m)*time.Minute +
+		time.Duration(sec)*time.Second + time.Duration(ms)*time.Millisecond, nil
 }
 
 func convertToMono(buf *audio.IntBuffer) *audio.IntBuffer {

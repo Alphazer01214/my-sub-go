@@ -42,6 +42,14 @@ func (s *Subtitle) AddSegment(start time.Duration, end time.Duration, text strin
 	s.Segments = append(s.Segments, seg)
 }
 
+// Clone 返回字幕快照（段切片浅拷贝，段字段均按不可变语义使用）。
+// 供实时保存（checkpoint）回调使用，避免与转录/翻译工作 goroutine 竞争同一份数据。
+func (s *Subtitle) Clone() *Subtitle {
+	out := &Subtitle{Segments: make([]Segment, len(s.Segments))}
+	copy(out.Segments, s.Segments)
+	return out
+}
+
 func (s *Subtitle) SRT() string {
 	var result strings.Builder
 

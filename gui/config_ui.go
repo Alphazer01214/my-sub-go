@@ -18,6 +18,7 @@ type ConfigUI struct {
 	W        *fyne.Window
 	SaveBtn  *widget.Button
 	ResetBtn *widget.Button
+	tabs     *container.AppTabs
 }
 
 func NewConfigUI(cm *typedef.ConfigManager, w *fyne.Window) *ConfigUI {
@@ -38,14 +39,14 @@ func (ui *ConfigUI) renderField(field reflect.StructField, value *reflect.Value)
 	var obj fyne.CanvasObject
 
 	bind, _ = bindObj(fieldType, value, bind, obj)
-	obj = getRealTimeObj(ui.W, fieldType, value)
+	obj = getRealTimeObj(ui.W, fieldType, value, field.Tag.Get("support_ext"), nil)
 	//ui.Items[field.Name] = bind
 	return container.NewVBox(widget.NewLabel(label), obj)
 }
 
-func (ui *ConfigUI) renderTab() fyne.CanvasObject {
+func (ui *ConfigUI) renderTabItems() []*container.TabItem {
 	// tabs
-	tabs := container.NewAppTabs()
+	items := []*container.TabItem{}
 	v := reflect.ValueOf(ui.Cm.Cfg).Elem()
 	t := v.Type()
 
@@ -70,10 +71,10 @@ func (ui *ConfigUI) renderTab() fyne.CanvasObject {
 			groupContainer.Add(ui.renderField(f, &fieldVal))
 		}
 
-		tabs.Append(container.NewTabItem(group, groupContainer))
+		items = append(items, container.NewTabItem(group, groupContainer))
 	}
 
-	return tabs
+	return items
 }
 
 //func (ui *ConfigUI) reload() error {
@@ -204,7 +205,7 @@ func (ui *ConfigUI) renderTab() fyne.CanvasObject {
 //}
 
 func (ui *ConfigUI) RenderConfigWindow() fyne.CanvasObject {
-	tabs := ui.renderTab()
+	ui.tabs = container.NewAppTabs(ui.renderTabItems()...)
 	ui.SaveBtn = widget.NewButton("Save", func() {
 		// 显示确认对话框
 		d := dialog.NewConfirm("保存配置", "是否保存配置并重启程序？",
@@ -212,7 +213,7 @@ func (ui *ConfigUI) RenderConfigWindow() fyne.CanvasObject {
 				if yes {
 					// 保存配置
 					if err := ui.Cm.Save(); err != nil {
-						dialog.ShowError(err, *ui.W)
+						showErrorDialog(*ui.W, err)
 						return
 					}
 					// 重启程序
@@ -224,12 +225,15 @@ func (ui *ConfigUI) RenderConfigWindow() fyne.CanvasObject {
 	})
 	ui.ResetBtn = widget.NewButton("Reset", func() {
 		if err := ui.Cm.Reset(); err != nil {
-			dialog.ShowError(err, *ui.W)
+			showErrorDialog(*ui.W, err)
 			return
 		}
+		// 重建表单，让界面回到配置文件的值
+		ui.tabs.Items = ui.renderTabItems()
+		ui.tabs.Refresh()
 		dialog.ShowInformation("Success", "Reset config success", *ui.W)
 	})
 
-	return container.NewVBox(tabs, container.NewHBox(ui.SaveBtn, ui.ResetBtn))
+	return container.NewVBox(ui.tabs, container.NewHBox(ui.SaveBtn, ui.ResetBtn))
 
 }
