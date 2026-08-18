@@ -69,10 +69,8 @@ type WhisperConfig struct {
 	BinaryPath       string `json:"binary_path" label:"Whisper路径" description:"Whisper可执行文件路径" type:"file" placeholder:"dependencies/whisper.cpp/bin/whisper-cli.exe" support_ext:".exe"`
 	ModelPath        string `json:"model_path" label:"模型路径" description:"Whisper模型文件路径" type:"file" placeholder:"models/whisper/ggml-medium.bin" support_ext:".bin"`
 	VADPath          string `json:"vad_path" label:"VAD路径" description:"语音活动检测模型路径" type:"file" placeholder:"models/vad/ggml-silero-v6.2.0.bin" support_ext:".bin"`
-	SrcLang          Lang   `json:"src_lang" label:"源语言" description:"音频源语言" type:"lang" placeholder:"en"`
-	ChunkDurationSec int    `json:"chunk_duration_sec" label:"切片时长" description:"音频分块时长(秒)" type:"int" placeholder:"20"` // 音频分块时长(秒)
-	ChunkOverlapSec  int    `json:"chunk_overlap_sec" label:"切片重叠" description:"音频分块重叠时长(秒)" type:"int" placeholder:"5"` // 音频分块重叠时长(秒)
-	Threads          int    `json:"threads" label:"线程数" description:"处理线程数量" type:"int" placeholder:"8"`
+	SrcLang Lang   `json:"src_lang" label:"源语言" description:"音频源语言" type:"lang" placeholder:"en"`
+	Threads int    `json:"threads" label:"线程数" description:"处理线程数量" type:"int" placeholder:"8"`
 }
 
 // LlamaConfig Llama配置

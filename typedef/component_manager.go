@@ -66,16 +66,15 @@ func mediaKind(path string) string {
 	return ""
 }
 
-// TranscribeCtx 转录媒体文件（视频先抽音频、非 wav 音频先转码），使用全局分块参数，不落盘任何字幕。
+// TranscribeCtx 转录媒体文件（视频先抽音频、非 wav 音频先转码），使用 VAD 进行语音活动检测，不落盘任何字幕。
 func (cm *ComponentManager) TranscribeCtx(ctx context.Context, vPath string, lang Lang, progress func(int, string)) (*Subtitle, error) {
-	return cm.TranscribeCtxWithOptions(ctx, vPath, lang, TranscribeOptions{}, progress, nil)
+	return cm.TranscribeCtxWithCheckpoint(ctx, vPath, lang, progress, nil)
 }
 
-// TranscribeCtxWithOptions 同上，但分块参数来自 opts（全零时回退全局配置），
-// checkpoint 每块回调一次（可为 nil，供调用方实时落盘字幕快照）。
+// TranscribeCtxWithCheckpoint 同上，支持 checkpoint 回调（可为 nil，供调用方实时落盘字幕快照）。
 // 中间音频使用隐藏临时名（.{base}.tmp.wav），转写完成后立即删除，不留中间产物。
 // ctx 用于取消；progress(percent 0-100, phase) 可为 nil。
-func (cm *ComponentManager) TranscribeCtxWithOptions(ctx context.Context, vPath string, lang Lang, opts TranscribeOptions, progress func(int, string), checkpoint func(*Subtitle)) (*Subtitle, error) {
+func (cm *ComponentManager) TranscribeCtxWithCheckpoint(ctx context.Context, vPath string, lang Lang, progress func(int, string), checkpoint func(*Subtitle)) (*Subtitle, error) {
 	kind := mediaKind(vPath)
 	if kind == "" {
 		return nil, fmt.Errorf("不支持的媒体格式: %s", filepath.Ext(vPath))
@@ -114,7 +113,7 @@ func (cm *ComponentManager) TranscribeCtxWithOptions(ctx context.Context, vPath 
 		}()
 	}
 
-	sub, err := cm.Ts.ProcessFileWithOptions(wavPath, lang, opts, ctx, progress, checkpoint)
+	sub, err := cm.Ts.ProcessFile(wavPath, lang, ctx, progress)
 	if err != nil {
 		return nil, err
 	}

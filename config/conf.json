@@ -6,11 +6,9 @@
   },
   "whisper": {
     "binary_path": "dependencies/whisper.cpp/bin/whisper-cli.exe",
-    "model_path": "models/whisper/ggml-medium.bin",
+    "model_path": "models/whisper/ggml-large-v3.bin",
     "vad_path": "models/vad/ggml-silero-v6.2.0.bin",
     "src_lang": "ja",
-    "chunk_duration_sec": 20,
-    "chunk_overlap_sec": 5,
     "threads": 8
   },
   "llama": {

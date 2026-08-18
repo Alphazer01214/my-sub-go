@@ -9,17 +9,13 @@ import (
 	"time"
 )
 
-// TestSmokeTranscribeChunks 真实媒体冒烟测试：用 ffmpeg 截取 test/1.mp4 前 60 秒，
-// 以 15s/5s 分块转录，验证多块都有产出、时间戳跨块推进。
-//
-// 这是"字幕只剩第一句"缺陷的回归测试：修复前第 2 块起被 whisper 的
-// offset_ms 语义静默跳过（"input is too short"），只能产出第 1 块前 15 秒的内容，
-// 无法满足"存在起点 >= 20 秒的段"的断言。
+// TestSmokeTranscribe 真实媒体冒烟测试：用 ffmpeg 截取 test/1.mp4 前 120 秒，
+// 整段转录，验证 VAD 分段正常工作、时间戳推进。
 //
 // 默认跳过（需要 whisper 模型 + ffmpeg）；设置 MYSUBGO_SMOKE=1 启用：
 //
-//	$env:MYSUBGO_SMOKE='1'; go test ./typedef/ -run TestSmokeTranscribeChunks -v
-func TestSmokeTranscribeChunks(t *testing.T) {
+//	$env:MYSUBGO_SMOKE='1'; go test ./typedef/ -run TestSmokeTranscribe -v
+func TestSmokeTranscribe(t *testing.T) {
 	if os.Getenv("MYSUBGO_SMOKE") != "1" {
 		t.Skip("冒烟测试默认跳过：设置 MYSUBGO_SMOKE=1 启用")
 	}
@@ -60,24 +56,12 @@ func TestSmokeTranscribeChunks(t *testing.T) {
 	}
 
 	ts := NewTranscriber(cfg)
-	var checkpoints []int
-	sub, err := ts.ProcessFileWithOptions(tmp.Name(), LangAuto,
-		TranscribeOptions{ChunkDurationSec: 15, ChunkOverlapSec: 5},
-		context.Background(), nil,
-		func(s *Subtitle) {
-			checkpoints = append(checkpoints, len(s.Segments))
-		})
+	sub, err := ts.ProcessFile(tmp.Name(), LangAuto, context.Background(), nil)
 	if err != nil {
 		t.Fatalf("转录失败: %v", err)
 	}
-	if len(checkpoints) == 0 {
-		t.Fatal("checkpoint 一次都没触发（实时保存回调失效）")
-	}
-	if checkpoints[len(checkpoints)-1] != len(sub.Segments) {
-		t.Fatalf("最后一个 checkpoint %d 段 ≠ 最终 %d 段", checkpoints[len(checkpoints)-1], len(sub.Segments))
-	}
 	if len(sub.Segments) < 3 {
-		t.Fatalf("转录只产出 %d 段，期望 >= 3 段（多块均有产出）", len(sub.Segments))
+		t.Fatalf("转录只产出 %d 段，期望 >= 3 段", len(sub.Segments))
 	}
 	var maxStart time.Duration
 	for i, seg := range sub.Segments {
@@ -89,7 +73,7 @@ func TestSmokeTranscribeChunks(t *testing.T) {
 		}
 	}
 	if maxStart < 20*time.Second {
-		t.Fatalf("所有段都落在 20 秒内（最大起点 %v），疑似只有第 1 块被转录", maxStart)
+		t.Fatalf("所有段都落在 20 秒内（最大起点 %v），疑似转录不完整", maxStart)
 	}
-	t.Logf("转录 %d 段，最大起点 %v（跨块正常）", len(sub.Segments), maxStart)
+	t.Logf("转录 %d 段，最大起点 %v", len(sub.Segments), maxStart)
 }

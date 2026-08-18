@@ -48,8 +48,7 @@ type WorkflowUI struct {
 	Lang         typedef.Lang
 	Mode         workflowMode
 
-	TaskTranscribe typedef.TranscribeOptions
-	TaskTranslate  typedef.TranslateOptions
+	TaskTranslate typedef.TranslateOptions
 
 	subtitle *typedef.Subtitle
 
@@ -98,10 +97,6 @@ func NewWorkflowUI(cm *typedef.ComponentManager, w *fyne.Window) *WorkflowUI {
 	}
 	// 任务级参数：以全局配置为初值，页面上的修改只影响本次任务。
 	cfg := cm.Cfg
-	ui.TaskTranscribe = typedef.TranscribeOptions{
-		ChunkDurationSec: cfg.Whisper.ChunkDurationSec,
-		ChunkOverlapSec:  cfg.Whisper.ChunkOverlapSec,
-	}
 	ui.TaskTranslate = typedef.TranslateOptions{
 		SrcLang:        cfg.LLMAPI.SrcLang,
 		TgtLang:        cfg.LLMAPI.TgtLang,
@@ -218,14 +213,6 @@ func taskTextArea(label string, get func() string, set func(string)) fyne.Canvas
 // 直接操作 ui.Task* 副本，不写 cm.Cfg，下次任务仍以全局配置为初值。
 func (ui *WorkflowUI) renderAdvancedOptions() fyne.CanvasObject {
 	var items []fyne.CanvasObject
-	if ui.Mode == modeFull || ui.Mode == modeTranscribeOnly {
-		items = append(items,
-			taskIntField("分块时长(秒)", func() int { return ui.TaskTranscribe.ChunkDurationSec },
-				func(v int) { ui.TaskTranscribe.ChunkDurationSec = v }),
-			taskIntField("分块重叠(秒)", func() int { return ui.TaskTranscribe.ChunkOverlapSec },
-				func(v int) { ui.TaskTranscribe.ChunkOverlapSec = v }),
-		)
-	}
 	providers := []string{
 		string(typedef.LLMProviderOpenAI), string(typedef.LLMProviderDeepSeek),
 		string(typedef.LLMProviderQwen), string(typedef.LLMProviderClaude), string(typedef.LLMProviderOllama),
@@ -578,6 +565,16 @@ func (ui *WorkflowUI) saveCheckpoint(s *typedef.Subtitle, path, what string) {
 	}
 }
 
+// applyCheckpoint 实时落盘并把快照推到 UI 线程刷新表格（worker goroutine 内调用）：
+// 翻译每完成一批，表格（含译文列）立即显示最新结果。
+func (ui *WorkflowUI) applyCheckpoint(s *typedef.Subtitle, path, what string) {
+	ui.saveCheckpoint(s, path, what)
+	fyne.Do(func() {
+		ui.subtitle = s
+		ui.table.Refresh()
+	})
+}
+
 // countTranslated 统计已有译文的段数（部分失败时用于汇报进度）。
 func countTranslated(sub *typedef.Subtitle) int {
 	n := 0
@@ -603,8 +600,8 @@ func (ui *WorkflowUI) runTranslate(ctx context.Context, sub *typedef.Subtitle, p
 	return &translated, err
 }
 
-// onTranscribe 仅转录：转录并实时保存原文 SRT，不翻译。
-// 每完成一块就把当前累计字幕覆写到 原名.srt；取消时已完成的实时产物保留。
+// onTranscribe 仅转录：转录并保存原文 SRT，不翻译。
+// 转录完成后保存到 原名.srt；取消时已完成的实时产物保留。
 func (ui *WorkflowUI) onTranscribe() {
 	if ui.running || !ui.validateInput() {
 		return
@@ -620,17 +617,14 @@ func (ui *WorkflowUI) onTranscribe() {
 	mediaPath := ui.MediaPath
 	subtitleDir := ui.SubtitleDir
 	lang := ui.Lang
-	opts := ui.TaskTranscribe
 	srtPath := filepath.Join(subtitleDir, ui.baseName()+".srt")
 
 	go func() {
-		sub, err := ui.cm.TranscribeCtxWithOptions(ctx, mediaPath, lang, opts, func(p int, phase string) {
+		sub, err := ui.cm.TranscribeCtx(ctx, mediaPath, lang, func(p int, phase string) {
 			fyne.Do(func() {
 				ui.progress.SetValue(float64(p) / 100)
 				ui.status.SetText("仅转录: " + phase)
 			})
-		}, func(s *typedef.Subtitle) {
-			ui.saveCheckpoint(s, srtPath, "原文 SRT")
 		})
 		if err == nil {
 			err = sub.SaveToFile(srtPath)
@@ -674,18 +668,15 @@ func (ui *WorkflowUI) onFullPipeline() {
 	mediaPath := ui.MediaPath
 	subtitleDir := ui.SubtitleDir
 	lang := ui.Lang
-	tOpts := ui.TaskTranscribe
 	originalPath := filepath.Join(subtitleDir, ui.baseName()+".srt")
 	bilingualPath := filepath.Join(subtitleDir, ui.baseName()+"-bilingual.srt")
 
 	go func() {
-		sub, err := ui.cm.TranscribeCtxWithOptions(ctx, mediaPath, lang, tOpts, func(p int, phase string) {
+		sub, err := ui.cm.TranscribeCtx(ctx, mediaPath, lang, func(p int, phase string) {
 			fyne.Do(func() {
 				ui.progress.SetValue(float64(p) / 100)
 				ui.status.SetText("转录+翻译: " + phase)
 			})
-		}, func(s *typedef.Subtitle) {
-			ui.saveCheckpoint(s, originalPath, "原文 SRT")
 		})
 		partialMsg := ""
 		if err == nil {
@@ -698,7 +689,7 @@ func (ui *WorkflowUI) onFullPipeline() {
 			})
 			var translated *typedef.Subtitle
 			translated, err = ui.runTranslate(ctx, sub, "转录+翻译: ", func(s *typedef.Subtitle) {
-				ui.saveCheckpoint(s, bilingualPath, "双语 SRT")
+				ui.applyCheckpoint(s, bilingualPath, "双语 SRT")
 			})
 			if err != nil {
 				if ctx.Err() != nil {
@@ -778,7 +769,7 @@ func (ui *WorkflowUI) onTranslateOnly() {
 
 	go func() {
 		translated, tErr := ui.runTranslate(ctx, sub, "仅翻译: ", func(s *typedef.Subtitle) {
-			ui.saveCheckpoint(s, bilingualPath, "双语 SRT")
+			ui.applyCheckpoint(s, bilingualPath, "双语 SRT")
 		})
 		partialMsg := ""
 		if tErr != nil {

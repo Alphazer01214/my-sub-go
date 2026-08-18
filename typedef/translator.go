@@ -221,6 +221,16 @@ func (t *TranslatorAPI) TranslateContextWithOptions(ctx context.Context, sub *Su
 	}
 	t.merge(segs, transRes)
 	subRes.Segments = segs
+	// 汇总一次未获得译文的段数（失败窗口留空），不逐条刷日志
+	missing := 0
+	for _, s := range segs {
+		if strings.TrimSpace(s.Text) != "" && strings.TrimSpace(s.Translation) == "" {
+			missing++
+		}
+	}
+	if missing > 0 {
+		logx.Warn(logx.ModuleTranslate, "%d/%d 句未获得译文（失败窗口留空，可在表格中补译）", missing, len(segs))
+	}
 	if len(errs) > 0 {
 		return subRes, errors.Join(errs...)
 	}
@@ -455,6 +465,9 @@ func appendPlaceholders(res []TranslateResult, segs []Segment) []TranslateResult
 	return res
 }
 
+// merge 把翻译结果按 index 合并回字幕段；缺失的段保持空译文。
+// 注意：本函数被每窗口的 checkpoint 快照频繁调用（此时后面窗口尚未翻译，
+// "缺失"是常态而非错误），因此不逐条打日志；整体缺失数由调用方汇总报告。
 func (t *TranslatorAPI) merge(segs []Segment, trans []TranslateResult) {
 	transMap := make(map[int]string, len(trans))
 	for _, tr := range trans {
@@ -463,8 +476,6 @@ func (t *TranslatorAPI) merge(segs []Segment, trans []TranslateResult) {
 	for i := range segs {
 		if tr, ok := transMap[segs[i].Index]; ok {
 			segs[i].Translation = tr
-		} else {
-			t.logf("can't find translation for segment %d, content: %s", segs[i].Index, segs[i].Text)
 		}
 	}
 }
